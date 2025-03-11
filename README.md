@@ -43,6 +43,20 @@ Subscribe to the serial data:
 ros2 topic echo /odom
 ```
 
+### Parameters
+
+To add parameters when running such as for the distance per tick:
+
+```bash
+ros2 run rotary_encoder_odometry publisher --ros-args -p distance_per_tick_m:=0.01
+```
+
+To reverse the direction change distance_per_tick_m to a negative value:
+
+```bash
+ros2 run rotary_encoder_odometry publisher --ros-args -p distance_per_tick_m:=-0.01
+```
+
 ## License
 
 This project is licensed under the Apache License 2.0.

@@ -50,7 +50,7 @@ class EncoderToOdometry(Node):
         # Timer to process data every 0.1 seconds
         self.timer = self.create_timer(0.1, self.timer_callback)
 
-    def encoder_callback(self, msg):
+    def encoder_callback(self, msg: Int32):
         """Store the latest encoder count."""
         self.count = msg.data
 
@@ -81,11 +81,10 @@ class EncoderToOdometry(Node):
 
         # Calculate linear velocity (meters/second)
         linear_velocity = delta_distance / time_delta
-
+        
         # Update previous values for the next iteration
         self.prev_count = self.count
         self.prev_time = current_time
-
         # Create and populate the Odometry message
         odom = Odometry()
         odom.header.stamp = current_time.to_msg()

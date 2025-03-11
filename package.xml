@@ -3,9 +3,9 @@
 <package format="3">
   <name>rotary_encoder_odometry</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="andrewmjohnson549@gmail.com">pi</maintainer>
-  <license>TODO: License declaration</license>
+  <description>A package used for taking raw rotary encoder values and mapping it to 1d odometry </description>
+  <maintainer email="andrewmjohnson549@gmail.com">Andrew Johnson</maintainer>
+  <license>Apacje</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

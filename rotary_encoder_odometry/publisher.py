@@ -21,13 +21,16 @@ class EncoderToOdometry(Node):
         # Declare parameters with default values
         self.declare_parameter('encoder_topic', '/encoder')
         self.declare_parameter('odom_topic', '/odom')
-        self.declare_parameter('distance_per_tick', 0.01)  # meters per tick
+        self.declare_parameter('distance_per_tick_m', 0.01)  # meters per tick
+        self.declare_parameter('odom_frame_id', 'odom')
+        self.declare_parameter('child_frame_id', 'base_link')
 
         # Retrieve parameter values
         encoder_topic = self.get_parameter('encoder_topic').get_parameter_value().string_value
         odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.distance_per_tick = self.get_parameter('distance_per_tick').get_parameter_value().double_value
-    
+        self.distance_per_tick = self.get_parameter('distance_per_tick_m').get_parameter_value().double_value
+        self.odom_frame_id = self.get_parameter('odom_frame_id').get_parameter_value().string_value
+        self.child_frame_id = self.get_parameter('child_frame_id').get_parameter_value().string_value
 
         # Initialize state variables
         self.count = 0            # Current encoder count
@@ -86,8 +89,8 @@ class EncoderToOdometry(Node):
         # Create and populate the Odometry message
         odom = Odometry()
         odom.header.stamp = current_time.to_msg()
-        odom.header.frame_id = 'odom'      # Parent frame
-        odom.child_frame_id = 'base_link'  # Robot’s frame
+        odom.header.frame_id = self.odom_frame_id     # Parent frame
+        odom.child_frame_id = self.child_frame_id  # Robot’s frame
         odom.pose.pose.position.x = self.x
         odom.pose.pose.position.y = 0.0
         odom.pose.pose.position.z = 0.0

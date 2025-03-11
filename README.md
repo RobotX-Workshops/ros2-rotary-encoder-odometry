@@ -1,6 +1,6 @@
 # ROS2 Rotary Encoder Odometry
 
-A project used for taking raw rotary encoder values and mapping it to 1d odometry 
+A project used for taking raw rotary encoder values and mapping it to 1d odometry.
 
 ## Including as a Subrepository (Subrepo)
 
@@ -54,3 +54,7 @@ This project is licensed under the Apache License 2.0.
 ## Contributing
 
 Contributions are welcome via PR!
+
+## Other Resources
+
+- Can be paired with [this node](https://github.com/RobotX-Workshops/ros2-serial-reader) for getting values from a serial port

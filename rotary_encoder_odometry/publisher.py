@@ -273,8 +273,8 @@ class EncoderToOdometry(Node):
         mock.twist.twist.angular.z = self.mock_data["twist"]["twist"]["angular"]["z"]
         mock.twist.covariance = self.mock_data["twist"]["covariance"]
         # Publish the odometry message
-        self.odom_pub.publish(mock)
-        # self.odom_pub.publish(odom)
+        # self.odom_pub.publish(mock)
+        self.odom_pub.publish(odom)
 
 
 def main(args=None):

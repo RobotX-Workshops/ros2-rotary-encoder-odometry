@@ -94,6 +94,112 @@ class EncoderToOdometry(Node):
         self.twist_covariance[28] = twist_var_wy  # wy variance
         self.twist_covariance[35] = twist_var_wz  # wz variance
 
+        self.mock_data = {
+            "header": {"frame_id": "odom"},
+            "child_frame_id": "base_link",
+            "pose": {
+                "pose": {
+                    "position": {
+                        "x": 0.45626638604465064,
+                        "y": float(0),
+                        "z": float(0),
+                    },
+                    "orientation": {
+                        "x": float(0),
+                        "y": float(0),
+                        "z": float(0),
+                        "w": float(1),
+                    },
+                },
+                "covariance": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+            },
+            "twist": {
+                "twist": {
+                    "linear": {
+                        "x": float(0.09074461285121793),
+                        "y": float(0),
+                        "z": float(0),
+                    },
+                    "angular": {"x": float(0), "y": float(0), "z": float(0)},
+                },
+                "covariance": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+            },
+        }
+
     def encoder_callback(self, msg: Int32):
         """Store the latest encoder count."""
         self.count = msg.data
@@ -101,19 +207,16 @@ class EncoderToOdometry(Node):
     def timer_callback(self):
         """Compute and publish odometry periodically."""
         current_time = self.get_clock().now()
-
         # Skip computation on the first run (initialize baseline)
         if self.first_run:
             self.prev_count = self.count
             self.prev_time = current_time
             self.first_run = False
             return
-
         # Calculate time difference (in seconds)
         time_delta = (current_time - self.prev_time).nanoseconds / 1e9
         if time_delta <= 0:
             return  # Avoid division by zero
-
         # Calculate change in encoder counts
         delta_count = self.count - self.prev_count
 
@@ -146,8 +249,32 @@ class EncoderToOdometry(Node):
         odom.pose.covariance = self.pose_covariance
         odom.twist.covariance = self.twist_covariance
 
+        mock = Odometry()
+        mock.header.stamp = current_time.to_msg()
+        mock.header.frame_id = self.mock_data["header"]["frame_id"]
+        mock.child_frame_id = self.mock_data["child_frame_id"]
+        mock.pose.pose.position.x = self.mock_data["pose"]["pose"]["position"]["x"]
+        mock.pose.pose.position.y = self.mock_data["pose"]["pose"]["position"]["y"]
+        mock.pose.pose.position.z = self.mock_data["pose"]["pose"]["position"]["z"]
+        orientation_dict = self.mock_data["pose"]["pose"]["orientation"]
+        orientation = Quaternion(
+            x=orientation_dict["x"],
+            y=orientation_dict["y"],
+            z=orientation_dict["z"],
+            w=orientation_dict["w"],
+        )
+        mock.pose.pose.orientation = orientation
+        mock.pose.covariance = self.mock_data["pose"]["covariance"]
+        mock.twist.twist.linear.x = self.mock_data["twist"]["twist"]["linear"]["x"]
+        mock.twist.twist.linear.y = self.mock_data["twist"]["twist"]["linear"]["y"]
+        mock.twist.twist.linear.z = self.mock_data["twist"]["twist"]["linear"]["z"]
+        mock.twist.twist.angular.x = self.mock_data["twist"]["twist"]["angular"]["x"]
+        mock.twist.twist.angular.y = self.mock_data["twist"]["twist"]["angular"]["y"]
+        mock.twist.twist.angular.z = self.mock_data["twist"]["twist"]["angular"]["z"]
+        mock.twist.covariance = self.mock_data["twist"]["covariance"]
         # Publish the odometry message
-        self.odom_pub.publish(odom)
+        self.odom_pub.publish(mock)
+        # self.odom_pub.publish(odom)
 
 
 def main(args=None):

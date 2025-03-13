@@ -15,11 +15,12 @@ setup(
     zip_safe=True,
     maintainer='pi',
     maintainer_email='andrewmjohnson549@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='A project used for taking raw rotary encoder values and mapping it to 1d odometry.',
+    license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'publisher = rotary_encoder_odometry.publisher:main',
         ],
     },
 )

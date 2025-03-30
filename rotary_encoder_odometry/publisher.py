@@ -7,6 +7,7 @@ from tf2_ros import TransformBroadcaster
 from std_msgs.msg import Int32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion, TransformStamped
+from std_srvs.srv import Trigger
 import math
 
 
@@ -53,8 +54,8 @@ class EncoderToOdometry(Node):
         # Publish odometry data
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
 
-        # Timer to process data every 0.1 seconds
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        # Timer to process data every x seconds
+        self.timer = self.create_timer(0.01, self.timer_callback)
 
         # Define full 36-element covariance matrices
         # Pose covariance: only x has significant uncertainty, others are fixed
@@ -91,6 +92,10 @@ class EncoderToOdometry(Node):
 
         self.tf_broadcaster = None  # Initialize TransformBroadcaster to None
 
+        self.reset_service = self.create_service(
+            Trigger, "reset_odometry", self.reset_odometry_callback
+        )
+
     def update_parameters(self, timer: Timer) -> None:
         """Update parameters from the parameter server."""
         self.update_config()
@@ -126,6 +131,16 @@ class EncoderToOdometry(Node):
         """Store the latest encoder count."""
         self.count = msg.data
 
+    def reset_odometry_callback(
+        self, _: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        self.get_logger().info("Resetting odometry.")
+        self.x = 0.0
+        self.prev_count = self.count
+        response.success = True
+        response.message = "Odometry reset successfully."
+        return response
+
     def timer_callback(self) -> None:
         """Compute and publish odometry periodically."""
         current_time = self.get_clock().now()
@@ -134,7 +149,13 @@ class EncoderToOdometry(Node):
             self.prev_count = self.count
             self.prev_time = current_time
             self.first_run = False
+            self.get_logger().info(
+                f"First run: prev_count = {self.prev_count}, prev_time = {self.prev_time}"
+            )
             return
+
+        self.get_logger().info(f"X position: {self.x}")
+
         # Calculate time difference (in seconds)
         time_delta = (current_time - self.prev_time).nanoseconds / 1e9
         if time_delta <= 0:
@@ -185,7 +206,8 @@ class EncoderToOdometry(Node):
         t.header.frame_id = self.child_frame_id
         t.child_frame_id = self.odom_tf_id
 
-        t.transform.translation.x = self.x
+        # We minus the x position to get the transform from the robot to the odom frame
+        t.transform.translation.x = -self.x
         t.transform.translation.y = 0.0
         t.transform.translation.z = 0.0
         q = euler_to_quaternion(self.theta)

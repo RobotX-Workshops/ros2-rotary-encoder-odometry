@@ -166,16 +166,9 @@ class EncoderToOdometry(Node):
         # Calculate change in encoder counts
         delta_count = self.count - self.prev_count
 
-        self.get_logger().info(
-            f"Delta count: {delta_count}, Time delta: {time_delta:.6f} seconds"
-        )
-
         # Convert to distance traveled (meters)
         delta_distance = delta_count * self.distance_per_tick
 
-        self.get_logger().info(
-            f"Delta distance: {delta_distance:.6f} meters, Current x: {self.x:.6f}"
-        )
         # Update position (only x changes)
         self.x += delta_distance
 

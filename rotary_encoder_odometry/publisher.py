@@ -129,7 +129,8 @@ class EncoderToOdometry(Node):
             self.get_parameter("buffer_count").get_parameter_value().integer_value
         )
 
-        self.count_buffer = deque(maxlen=10)  # Buffer for 10 readings
+        self.count_buffer = deque(maxlen=self.buffer_count)
+        self.velocity_buffer = deque(maxlen=self.buffer_count)
 
         self.rate = self.get_parameter("rate").get_parameter_value().double_value
         if self.timer:
@@ -158,6 +159,9 @@ class EncoderToOdometry(Node):
         relative_count = msg.data - self.initial_count
         self.count_buffer.append(relative_count)
         self.count = sum(self.count_buffer) / len(self.count_buffer)
+        self.get_logger().info(
+            f"Encoder count: {relative_count}, Averaged count: {self.count}"
+        )
 
     def reset_odometry_callback(
         self, _: Trigger.Request, response: Trigger.Response
@@ -169,39 +173,38 @@ class EncoderToOdometry(Node):
         response.message = "Odometry reset successfully."
         return response
 
-    def timer_callback(self) -> None:
-        """Compute and publish odometry periodically."""
+    def timer_callback(self):
         current_time = self.get_clock().now()
-        # Skip computation on the first run (initialize baseline)
         if self.first_run and self.got_first_count:
-            self.prev_count = self.count
+            self.prev_avg_count = self.count  # Initialize properly
             self.prev_time = current_time
             self.first_run = False
-            self.get_logger().info(
-                f"First run: prev_count = {self.prev_count}, prev_time = {self.prev_time}"
-            )
             return
 
-        # Calculate time difference (in seconds)
         time_delta = (current_time - self.prev_time).nanoseconds / 1e9
         if time_delta <= 0:
-            return  # Avoid division by zero
+            return
 
-        # Calculate change in averaged counts
         delta_count = self.count - self.prev_avg_count
-
-        # Convert to distance traveled (meters)
         delta_distance = delta_count * self.distance_per_tick
-
-        # Update position (only x changes)
         self.x += delta_distance
-
-        # Calculate linear velocity (meters/second)
         linear_velocity = delta_distance / time_delta
 
-        # Update previous values for the next iteration
-        self.prev_count = self.count
+        # Add the new velocity to the buffer
+        self.velocity_buffer.append(linear_velocity)
+
+        averaged_velocity = 0.0  # Default if no values yet
+        # Compute the rolling average of velocities
+        if self.velocity_buffer:  # Check if buffer has values
+            averaged_velocity = sum(self.velocity_buffer) / len(self.velocity_buffer)
+
+        self.prev_avg_count = self.count
         self.prev_time = current_time
+
+        self.get_logger().info(
+            f"Delta count: {delta_count}, Delta distance: {delta_distance}, "
+            f"Linear velocity: {averaged_velocity}, Time delta: {time_delta}"
+        )
 
         # Create and populate the Odometry message
         odom = Odometry()
@@ -212,7 +215,7 @@ class EncoderToOdometry(Node):
         odom.pose.pose.position.y = 0.0
         odom.pose.pose.position.z = 0.0
         odom.pose.pose.orientation = euler_to_quaternion(self.theta)
-        odom.twist.twist.linear.x = linear_velocity
+        odom.twist.twist.linear.x = averaged_velocity
         odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = 0.0  # No rotation
         # Assign covariances to the message

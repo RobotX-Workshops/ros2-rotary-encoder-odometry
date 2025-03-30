@@ -1,4 +1,5 @@
 from typing import List, Optional
+from collections import deque
 import rclpy
 from rclpy.node import Node, Timer
 from rcl_interfaces.msg import SetParametersResult
@@ -32,6 +33,7 @@ class EncoderToOdometry(Node):
         self.declare_parameter("child_frame_id", "base_link")
         self.declare_parameter("odom_tf_id", "encoder_odom")
         self.declare_parameter("publish_transform", False)
+        self.declare_parameter("buffer_count", 0)
 
         # Timer to be created on params init
         self.timer: Optional[Timer] = None
@@ -43,7 +45,9 @@ class EncoderToOdometry(Node):
         self.add_on_set_parameters_callback(self.param_change_callback)
 
         # Initialize state variables
+        self.initial_count = 0  # Our baseline
         self.count = 0  # Current encoder count
+        self.prev_avg_count = 0.0  # Previous averaged count
         self.prev_count = 0  # Previous encoder count
         self.x = 0.0  # Robot’s x position (meters)
         self.theta = 0.0  # Fixed orientation (no rotation)
@@ -121,6 +125,12 @@ class EncoderToOdometry(Node):
         self.publish_transform = (
             self.get_parameter("publish_transform").get_parameter_value().bool_value
         )
+        self.buffer_count = (
+            self.get_parameter("buffer_count").get_parameter_value().integer_value
+        )
+
+        self.count_buffer = deque(maxlen=10)  # Buffer for 10 readings
+
         self.rate = self.get_parameter("rate").get_parameter_value().double_value
         if self.timer:
             self.timer.cancel()
@@ -136,12 +146,18 @@ class EncoderToOdometry(Node):
         return SetParametersResult(successful=True)
 
     def encoder_callback(self, msg: Int32) -> None:
-        """Store the latest encoder count."""
+        """Handle incoming encoder data and update the average."""
         if not self.got_first_count:
+            # Set the baseline with the first reading
+            self.initial_count = msg.data
             self.got_first_count = True
-            self.get_logger().info(f"First encoder count received: {msg.data}")
+            self.get_logger().info(f"Initial count set: {self.initial_count}")
+            return  # Don’t process this first reading yet
 
-        self.count = msg.data
+        # Get the relative count and add it to the buffer
+        relative_count = msg.data - self.initial_count
+        self.count_buffer.append(relative_count)
+        self.count = sum(self.count_buffer) / len(self.count_buffer)
 
     def reset_odometry_callback(
         self, _: Trigger.Request, response: Trigger.Response
@@ -170,8 +186,9 @@ class EncoderToOdometry(Node):
         time_delta = (current_time - self.prev_time).nanoseconds / 1e9
         if time_delta <= 0:
             return  # Avoid division by zero
-        # Calculate change in encoder counts
-        delta_count = self.count - self.prev_count
+
+        # Calculate change in averaged counts
+        delta_count = self.count - self.prev_avg_count
 
         # Convert to distance traveled (meters)
         delta_distance = delta_count * self.distance_per_tick

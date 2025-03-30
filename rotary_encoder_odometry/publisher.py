@@ -44,6 +44,7 @@ class EncoderToOdometry(Node):
         self.x = 0.0  # Robot’s x position (meters)
         self.theta = 0.0  # Fixed orientation (no rotation)
         self.first_run = True  # Flag for initialization
+        self.got_first_count = False  # Flag to check if first count is received
         self.prev_time = self.get_clock().now()  # Last update time
 
         # Subscribe to encoder counts
@@ -129,6 +130,10 @@ class EncoderToOdometry(Node):
 
     def encoder_callback(self, msg: Int32) -> None:
         """Store the latest encoder count."""
+        if not self.got_first_count:
+            self.got_first_count = True
+            self.get_logger().info(f"First encoder count received: {msg.data}")
+
         self.count = msg.data
 
     def reset_odometry_callback(
@@ -145,7 +150,7 @@ class EncoderToOdometry(Node):
         """Compute and publish odometry periodically."""
         current_time = self.get_clock().now()
         # Skip computation on the first run (initialize baseline)
-        if self.first_run:
+        if self.first_run and self.got_first_count:
             self.prev_count = self.count
             self.prev_time = current_time
             self.first_run = False
@@ -161,9 +166,16 @@ class EncoderToOdometry(Node):
         # Calculate change in encoder counts
         delta_count = self.count - self.prev_count
 
+        self.get_logger().info(
+            f"Delta count: {delta_count}, Time delta: {time_delta:.6f} seconds"
+        )
+
         # Convert to distance traveled (meters)
         delta_distance = delta_count * self.distance_per_tick
 
+        self.get_logger().info(
+            f"Delta distance: {delta_distance:.6f} meters, Current x: {self.x:.6f}"
+        )
         # Update position (only x changes)
         self.x += delta_distance
 

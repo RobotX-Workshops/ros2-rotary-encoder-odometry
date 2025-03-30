@@ -154,8 +154,6 @@ class EncoderToOdometry(Node):
             )
             return
 
-        self.get_logger().info(f"X position: {self.x}")
-
         # Calculate time difference (in seconds)
         time_delta = (current_time - self.prev_time).nanoseconds / 1e9
         if time_delta <= 0:

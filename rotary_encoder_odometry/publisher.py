@@ -1,8 +1,12 @@
+from typing import List
 import rclpy
-from rclpy.node import Node
+from rclpy.node import Node, Timer
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.parameter import Parameter
+from tf2_ros import TransformBroadcaster
 from std_msgs.msg import Int32
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import Quaternion, TransformStamped
 import math
 
 
@@ -21,26 +25,17 @@ class EncoderToOdometry(Node):
         super().__init__("encoder_to_odometry")
 
         # Declare parameters with default values
-        self.declare_parameter("encoder_topic", "/encoder")
-        self.declare_parameter("odom_topic", "/odom")
-        self.declare_parameter("distance_per_tick_m", 0.01)  # meters per tick
+        self.declare_parameter("distance_per_tick_m", 0.0)  # meters per tick
         self.declare_parameter("odom_frame_id", "odom")
         self.declare_parameter("child_frame_id", "base_link")
+        self.declare_parameter("odom_tf_id", "encoder_odom")
+        self.declare_parameter("publish_transform", False)
 
         # Retrieve parameter values
-        encoder_topic = (
-            self.get_parameter("encoder_topic").get_parameter_value().string_value
-        )
-        odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
-        self.distance_per_tick = (
-            self.get_parameter("distance_per_tick_m").get_parameter_value().double_value
-        )
-        self.odom_frame_id = (
-            self.get_parameter("odom_frame_id").get_parameter_value().string_value
-        )
-        self.child_frame_id = (
-            self.get_parameter("child_frame_id").get_parameter_value().string_value
-        )
+        self.update_config()
+
+        # Callback for parameter changes
+        self.add_on_set_parameters_callback(self.param_change_callback)
 
         # Initialize state variables
         self.count = 0  # Current encoder count
@@ -52,11 +47,11 @@ class EncoderToOdometry(Node):
 
         # Subscribe to encoder counts
         self.encoder_sub = self.create_subscription(
-            Int32, encoder_topic, self.encoder_callback, 10
+            Int32, "/encoder", self.encoder_callback, 10
         )
 
         # Publish odometry data
-        self.odom_pub = self.create_publisher(Odometry, odom_topic, 10)
+        self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
 
         # Timer to process data every 0.1 seconds
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -92,119 +87,46 @@ class EncoderToOdometry(Node):
         self.twist_covariance[14] = twist_var_vz  # vz variance
         self.twist_covariance[21] = twist_var_wx  # wx variance
         self.twist_covariance[28] = twist_var_wy  # wy variance
-        self.twist_covariance[35] = twist_var_wz  # wz variance
+        self.twist_covariance[35] = twist_var_wz
 
-        self.mock_data = {
-            "header": {"frame_id": "odom"},
-            "child_frame_id": "base_link",
-            "pose": {
-                "pose": {
-                    "position": {
-                        "x": 0.45626638604465064,
-                        "y": float(0),
-                        "z": float(0),
-                    },
-                    "orientation": {
-                        "x": float(0),
-                        "y": float(0),
-                        "z": float(0),
-                        "w": float(1),
-                    },
-                },
-                "covariance": [
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ],
-            },
-            "twist": {
-                "twist": {
-                    "linear": {
-                        "x": float(0.09074461285121793),
-                        "y": float(0),
-                        "z": float(0),
-                    },
-                    "angular": {"x": float(0), "y": float(0), "z": float(0)},
-                },
-                "covariance": [
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ],
-            },
-        }
+        self.tf_broadcaster = None  # Initialize TransformBroadcaster to None
 
-    def encoder_callback(self, msg: Int32):
+    def update_parameters(self, timer: Timer) -> None:
+        """Update parameters from the parameter server."""
+        self.update_config()
+        # Cancel the timer to make it one-shot
+        timer.cancel()
+
+    def update_config(self):
+        self.distance_per_tick = (
+            self.get_parameter("distance_per_tick_m").get_parameter_value().double_value
+        )
+        self.odom_frame_id = (
+            self.get_parameter("odom_frame_id").get_parameter_value().string_value
+        )
+        self.child_frame_id = (
+            self.get_parameter("child_frame_id").get_parameter_value().string_value
+        )  # wz variance
+        self.odom_tf_id = (
+            self.get_parameter("odom_tf_id").get_parameter_value().string_value
+        )
+        self.publish_transform = (
+            self.get_parameter("publish_transform").get_parameter_value().bool_value
+        )
+
+    def param_change_callback(self, _: List[Parameter]) -> SetParametersResult:
+        """Handle dynamic parameter changes."""
+        self.get_logger().info("New parameters received")
+
+        # Schedule the update to happen after a short delay
+        timer = self.create_timer(0.1, lambda: self.update_parameters(timer))
+        return SetParametersResult(successful=True)
+
+    def encoder_callback(self, msg: Int32) -> None:
         """Store the latest encoder count."""
         self.count = msg.data
 
-    def timer_callback(self):
+    def timer_callback(self) -> None:
         """Compute and publish odometry periodically."""
         current_time = self.get_clock().now()
         # Skip computation on the first run (initialize baseline)
@@ -249,32 +171,26 @@ class EncoderToOdometry(Node):
         odom.pose.covariance = self.pose_covariance
         odom.twist.covariance = self.twist_covariance
 
-        mock = Odometry()
-        mock.header.stamp = current_time.to_msg()
-        mock.header.frame_id = self.mock_data["header"]["frame_id"]
-        mock.child_frame_id = self.mock_data["child_frame_id"]
-        mock.pose.pose.position.x = self.mock_data["pose"]["pose"]["position"]["x"]
-        mock.pose.pose.position.y = self.mock_data["pose"]["pose"]["position"]["y"]
-        mock.pose.pose.position.z = self.mock_data["pose"]["pose"]["position"]["z"]
-        orientation_dict = self.mock_data["pose"]["pose"]["orientation"]
-        orientation = Quaternion(
-            x=orientation_dict["x"],
-            y=orientation_dict["y"],
-            z=orientation_dict["z"],
-            w=orientation_dict["w"],
-        )
-        mock.pose.pose.orientation = orientation
-        mock.pose.covariance = self.mock_data["pose"]["covariance"]
-        mock.twist.twist.linear.x = self.mock_data["twist"]["twist"]["linear"]["x"]
-        mock.twist.twist.linear.y = self.mock_data["twist"]["twist"]["linear"]["y"]
-        mock.twist.twist.linear.z = self.mock_data["twist"]["twist"]["linear"]["z"]
-        mock.twist.twist.angular.x = self.mock_data["twist"]["twist"]["angular"]["x"]
-        mock.twist.twist.angular.y = self.mock_data["twist"]["twist"]["angular"]["y"]
-        mock.twist.twist.angular.z = self.mock_data["twist"]["twist"]["angular"]["z"]
-        mock.twist.covariance = self.mock_data["twist"]["covariance"]
-        # Publish the odometry message
-        # self.odom_pub.publish(mock)
         self.odom_pub.publish(odom)
+
+        if not self.publish_transform:
+            return
+
+        # Publish transform if enabled
+        if self.tf_broadcaster is None:
+            self.tf_broadcaster = TransformBroadcaster(self)
+
+        t = TransformStamped()
+        t.header.stamp = current_time.to_msg()
+        t.header.frame_id = self.child_frame_id
+        t.child_frame_id = self.odom_tf_id
+
+        t.transform.translation.x = self.x
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.0
+        q = euler_to_quaternion(self.theta)
+        t.transform.rotation = q
+        self.tf_broadcaster.sendTransform(t)
 
 
 def main(args=None):

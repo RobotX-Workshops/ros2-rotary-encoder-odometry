@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import rclpy
 from rclpy.node import Node, Timer
 from rcl_interfaces.msg import SetParametersResult
@@ -27,10 +27,14 @@ class EncoderToOdometry(Node):
 
         # Declare parameters with default values
         self.declare_parameter("distance_per_tick_m", 0.0)  # meters per tick
+        self.declare_parameter("rate", 0.0)
         self.declare_parameter("odom_frame_id", "odom")
         self.declare_parameter("child_frame_id", "base_link")
         self.declare_parameter("odom_tf_id", "encoder_odom")
         self.declare_parameter("publish_transform", False)
+
+        # Timer to be created on params init
+        self.timer: Optional[Timer] = None
 
         # Retrieve parameter values
         self.update_config()
@@ -54,9 +58,6 @@ class EncoderToOdometry(Node):
 
         # Publish odometry data
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
-
-        # Timer to process data every x seconds
-        self.timer = self.create_timer(0.01, self.timer_callback)
 
         # Define full 36-element covariance matrices
         # Pose covariance: only x has significant uncertainty, others are fixed
@@ -99,9 +100,9 @@ class EncoderToOdometry(Node):
 
     def update_parameters(self, timer: Timer) -> None:
         """Update parameters from the parameter server."""
+        timer.cancel()  # Cancel the timer to avoid multiple calls
         self.update_config()
         # Cancel the timer to make it one-shot
-        timer.cancel()
 
     def update_config(self):
         self.distance_per_tick = (
@@ -113,12 +114,18 @@ class EncoderToOdometry(Node):
         self.child_frame_id = (
             self.get_parameter("child_frame_id").get_parameter_value().string_value
         )  # wz variance
+
         self.odom_tf_id = (
             self.get_parameter("odom_tf_id").get_parameter_value().string_value
         )
         self.publish_transform = (
             self.get_parameter("publish_transform").get_parameter_value().bool_value
         )
+        self.rate = self.get_parameter("rate").get_parameter_value().double_value
+        if self.timer:
+            self.timer.cancel()
+        # Timer to process data every x seconds
+        self.timer = self.create_timer(self.rate, self.timer_callback)
 
     def param_change_callback(self, _: List[Parameter]) -> SetParametersResult:
         """Handle dynamic parameter changes."""

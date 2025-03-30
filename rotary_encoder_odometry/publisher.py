@@ -48,7 +48,6 @@ class EncoderToOdometry(Node):
         self.initial_count = 0  # Our baseline
         self.count = 0  # Current encoder count
         self.prev_avg_count = 0.0  # Previous averaged count
-        self.prev_count = 0  # Previous encoder count
         self.x = 0.0  # Robot’s x position (meters)
         self.theta = 0.0  # Fixed orientation (no rotation)
         self.first_run = True  # Flag for initialization
@@ -165,7 +164,7 @@ class EncoderToOdometry(Node):
     ) -> Trigger.Response:
         self.get_logger().info("Resetting odometry.")
         self.x = 0.0
-        self.prev_count = self.count
+        self.prev_avg_count = self.count
         response.success = True
         response.message = "Odometry reset successfully."
         return response

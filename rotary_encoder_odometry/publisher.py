@@ -159,9 +159,6 @@ class EncoderToOdometry(Node):
         relative_count = msg.data - self.initial_count
         self.count_buffer.append(relative_count)
         self.count = sum(self.count_buffer) / len(self.count_buffer)
-        self.get_logger().info(
-            f"Encoder count: {relative_count}, Averaged count: {self.count}"
-        )
 
     def reset_odometry_callback(
         self, _: Trigger.Request, response: Trigger.Response
@@ -200,11 +197,6 @@ class EncoderToOdometry(Node):
 
         self.prev_avg_count = self.count
         self.prev_time = current_time
-
-        self.get_logger().info(
-            f"Delta count: {delta_count}, Delta distance: {delta_distance}, "
-            f"Linear velocity: {averaged_velocity}, Time delta: {time_delta}"
-        )
 
         # Create and populate the Odometry message
         odom = Odometry()

@@ -10,6 +10,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion, TransformStamped
 from std_srvs.srv import Trigger
 import math
+import gc
 
 
 def euler_to_quaternion(yaw):
@@ -28,12 +29,20 @@ class EncoderToOdometry(Node):
 
         # Declare parameters with default values
         self.declare_parameter("distance_per_tick_m", 0.0)  # meters per tick
+        self.declare_parameter("gain", 1.0)  # Gain for the encoder velocity
         self.declare_parameter("rate", 0.0)
         self.declare_parameter("odom_frame_id", "odom")
         self.declare_parameter("child_frame_id", "base_link")
         self.declare_parameter("odom_tf_id", "encoder_odom")
         self.declare_parameter("publish_transform", False)
         self.declare_parameter("buffer_count", 0)
+
+        # Declare Garbabge Collector parameters
+        self.declare_parameter("gc.disable", False)
+        self.declare_parameter("gc.show_stats", False)
+        self.declare_parameter("gc.thresholds.gen_0", 700)
+        self.declare_parameter("gc.thresholds.gen_1", 10)
+        self.declare_parameter("gc.thresholds.gen_2", 10)
 
         # Timer to be created on params init
         self.timer: Optional[Timer] = None
@@ -111,6 +120,11 @@ class EncoderToOdometry(Node):
         self.distance_per_tick = (
             self.get_parameter("distance_per_tick_m").get_parameter_value().double_value
         )
+        self.gain = (
+            self.get_parameter("gain")
+            .get_parameter_value()
+            .double_value  # Retrieve gain parameter
+        )
         self.odom_frame_id = (
             self.get_parameter("odom_frame_id").get_parameter_value().string_value
         )
@@ -132,6 +146,28 @@ class EncoderToOdometry(Node):
         self.velocity_buffer = deque(maxlen=self.buffer_count)
 
         self.rate = self.get_parameter("rate").get_parameter_value().double_value
+
+        if self.get_parameter("gc.disable").get_parameter_value().bool_value:
+            self.get_logger().info("Garbage collector disabled")
+            gc.disable()
+        else:
+            self.get_logger().info("Garbage collector enabled")
+            gc.enable()
+            # Set the garbage collector thresholds
+            gc.set_stats(self.get_parameter("gc.show_stats").get_parameter_value())
+            gc.set_threshold(
+                self.get_parameter("gc.thresholds.gen_0")
+                .get_parameter_value()
+                .integer_value,
+                self.get_parameter("gc.thresholds.gen_1")
+                .get_parameter_value()
+                .integer_value,
+                self.get_parameter("gc.thresholds.gen_2")
+                .get_parameter_value()
+                .integer_value,
+            )
+            self.get_logger().info("Garbage collector thresholds set")
+
         if self.timer:
             self.timer.cancel()
         # Timer to process data every x seconds
@@ -194,6 +230,9 @@ class EncoderToOdometry(Node):
         if self.velocity_buffer:  # Check if buffer has values
             averaged_velocity = sum(self.velocity_buffer) / len(self.velocity_buffer)
 
+        # Apply the gain to the averaged velocity
+        adjusted_velocity = averaged_velocity * self.gain
+
         self.prev_avg_count = self.count
         self.prev_time = current_time
 
@@ -206,7 +245,7 @@ class EncoderToOdometry(Node):
         odom.pose.pose.position.y = 0.0
         odom.pose.pose.position.z = 0.0
         odom.pose.pose.orientation = euler_to_quaternion(self.theta)
-        odom.twist.twist.linear.x = averaged_velocity
+        odom.twist.twist.linear.x = adjusted_velocity
         odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = 0.0  # No rotation
         # Assign covariances to the message

@@ -39,7 +39,6 @@ class EncoderToOdometry(Node):
 
         # Declare Garbabge Collector parameters
         self.declare_parameter("gc.disable", False)
-        self.declare_parameter("gc.show_stats", False)
         self.declare_parameter("gc.thresholds.gen_0", 700)
         self.declare_parameter("gc.thresholds.gen_1", 10)
         self.declare_parameter("gc.thresholds.gen_2", 10)
@@ -154,7 +153,6 @@ class EncoderToOdometry(Node):
             self.get_logger().info("Garbage collector enabled")
             gc.enable()
             # Set the garbage collector thresholds
-            gc.set_stats(self.get_parameter("gc.show_stats").get_parameter_value())
             gc.set_threshold(
                 self.get_parameter("gc.thresholds.gen_0")
                 .get_parameter_value()
